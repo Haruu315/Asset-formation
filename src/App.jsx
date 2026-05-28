@@ -150,6 +150,9 @@ export default function App() {
   const totalInvested = (last?.NISA投資額 ?? 0) + (last?.特定口座投資額 ?? 0)
   const nisaUsed = last?.NISA投資額 ?? 0
   const nisaFillPct = Math.min(100, (nisaUsed / NISA_LIMIT) * 100).toFixed(0)
+  const [filter, setFilter] = useState('both') // 'both' | 'nisa' | 'taxable'
+  const showNisa = filter !== 'taxable'
+  const showTaxable = filter !== 'nisa'
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
@@ -259,9 +262,28 @@ export default function App() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-base font-semibold text-gray-700">年齢別 資産推移</h2>
-            <div className="flex gap-3 text-xs text-gray-500">
-              <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-500" />NISA（非課税）</span>
-              <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-400" />特定口座（課税）</span>
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+              {[
+                { key: 'both', label: '両方' },
+                { key: 'nisa', label: 'NISA', color: 'blue' },
+                { key: 'taxable', label: '特定口座', color: 'amber' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setFilter(key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    filter === key
+                      ? key === 'nisa'
+                        ? 'bg-blue-500 text-white shadow-sm'
+                        : key === 'taxable'
+                        ? 'bg-amber-400 text-white shadow-sm'
+                        : 'bg-white text-gray-700 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
           <ResponsiveContainer width="100%" height={340}>
@@ -283,15 +305,10 @@ export default function App() {
                 width={72}
               />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
-              <Legend
-                wrapperStyle={{ fontSize: '11px', paddingTop: '12px' }}
-                iconType="square"
-                iconSize={10}
-              />
-              <Bar dataKey="NISA投資額" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="NISA運用益" stackId="a" fill="#93c5fd" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="特定口座投資額" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="特定口座運用益" stackId="a" fill="#fcd34d" radius={[4, 4, 0, 0]} />
+              {showNisa && <Bar dataKey="NISA投資額" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />}
+              {showNisa && <Bar dataKey="NISA運用益" stackId="a" fill="#93c5fd" radius={showTaxable ? [0, 0, 0, 0] : [4, 4, 0, 0]} />}
+              {showTaxable && <Bar dataKey="特定口座投資額" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />}
+              {showTaxable && <Bar dataKey="特定口座運用益" stackId="a" fill="#fcd34d" radius={[4, 4, 0, 0]} />}
             </BarChart>
           </ResponsiveContainer>
         </div>
