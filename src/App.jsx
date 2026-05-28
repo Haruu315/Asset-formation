@@ -5,7 +5,7 @@ import {
 
 const NISA_LIMIT = 18_000_000
 const TAX_RATE = 0.20315
-const STORAGE_KEY = 'invest-sim-v1'
+const STORAGE_KEY = 'invest-sim-v2'
 
 const formatYen = (v) =>
   new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(v)
@@ -112,9 +112,9 @@ function DataTable({ rows, columns, label }) {
 }
 
 const DEFAULT_BRACKETS = [
-  { id: 1, fromAge: 25, toAge: 29, monthlyAmount: 30_000 },
-  { id: 2, fromAge: 30, toAge: 39, monthlyAmount: 50_000 },
-  { id: 3, fromAge: 40, toAge: 65, monthlyAmount: 80_000 },
+  { id: 1, fromAge: 19, toAge: 23, monthlyAmount: 100_000 },
+  { id: 2, fromAge: 24, toAge: 27, monthlyAmount: 200_000 },
+  { id: 3, fromAge: 28, toAge: 45, monthlyAmount: 300_000 },
 ]
 
 export default function App() {
@@ -122,11 +122,11 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') } catch { return {} }
   })
 
-  const [currentAge, setCurrentAge] = useState(saved.currentAge ?? 25)
-  const [currentAssets, setCurrentAssets] = useState(saved.currentAssets ?? 500_000)
-  const [nominalRate, setNominalRate] = useState(saved.nominalRate ?? 5)
+  const [currentAge, setCurrentAge] = useState(saved.currentAge ?? 19)
+  const [currentAssets, setCurrentAssets] = useState(saved.currentAssets ?? 1_500_000)
+  const [nominalRate, setNominalRate] = useState(saved.nominalRate ?? 9)
   const [inflationRate, setInflationRate] = useState(saved.inflationRate ?? 2)
-  const [targetAge, setTargetAge] = useState(saved.targetAge ?? 65)
+  const [targetAge, setTargetAge] = useState(saved.targetAge ?? 100)
   const [brackets, setBrackets] = useState(saved.brackets ?? DEFAULT_BRACKETS)
   const [filter, setFilter] = useState(saved.filter ?? 'both')
   const [showAfterTax, setShowAfterTax] = useState(saved.showAfterTax ?? false)
@@ -292,7 +292,7 @@ export default function App() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
             <BasicInput label="現在の年齢" value={currentAge} onChange={setCurrentAge} min={10} max={80} step={1} unit="歳" />
             <BasicInput label="現在の資産" value={currentAssets} onChange={setCurrentAssets} min={0} step={10000} unit="円" />
-            <BasicInput label="積立終了年齢" value={targetAge} onChange={(v) => setTargetAge(Math.max(currentAge + 1, v))} min={currentAge + 1} max={100} step={1} unit="歳" />
+            <BasicInput label="目標年齢" value={targetAge} onChange={(v) => setTargetAge(Math.max(currentAge + 1, v))} min={currentAge + 1} max={120} step={1} unit="歳" />
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <BasicInput label="想定年利（名目）" value={nominalRate} onChange={setNominalRate} min={0} max={30} step={0.1} unit="%" />
@@ -434,7 +434,7 @@ export default function App() {
           <div className="flex items-center justify-between mb-2">
             <div>
               <h2 className="text-base font-semibold text-gray-700">取り崩しシミュレーション</h2>
-              <p className="text-xs text-gray-400 mt-0.5">{targetAge}歳時点の {formatYenShort(totalFinal)} を取り崩した場合</p>
+              <p className="text-xs text-gray-400 mt-0.5">目標年齢（{targetAge}歳）時点の {formatYenShort(totalFinal)} を取り崩した場合</p>
             </div>
             <Toggle enabled={withdrawalEnabled} onChange={setWithdrawalEnabled} />
           </div>
