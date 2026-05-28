@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import {
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -10,6 +10,8 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+const NISA_LIMIT = 18_000_000
+
 const formatYen = (value) =>
   new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(value)
 
@@ -17,24 +19,6 @@ const formatYenShort = (value) => {
   if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(1)}億円`
   if (value >= 10_000) return `${(value / 10_000).toFixed(0)}万円`
   return `${value.toLocaleString('ja-JP')}円`
-}
-
-function SmallInput({ value, onChange, min, max, step, unit, align = 'right', className = '' }) {
-  return (
-    <div className={`flex items-center gap-1 ${className}`}>
-      <input
-        type="number"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        min={min}
-        max={max}
-        step={step}
-        className="w-full rounded-lg border border-gray-200 px-2 py-2 text-gray-800 font-semibold focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition text-sm"
-        style={{ textAlign: align }}
-      />
-      {unit && <span className="text-sm text-gray-400 whitespace-nowrap">{unit}</span>}
-    </div>
-  )
 }
 
 function BasicInput({ label, value, onChange, min, max, step, unit }) {
@@ -57,16 +41,40 @@ function BasicInput({ label, value, onChange, min, max, step, unit }) {
   )
 }
 
+function SmallInput({ value, onChange, min, max, step, unit, align = 'right' }) {
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        min={min}
+        max={max}
+        step={step}
+        className="w-full rounded-lg border border-gray-200 px-2 py-2 text-gray-800 font-semibold focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition text-sm"
+        style={{ textAlign: align }}
+      />
+      {unit && <span className="text-sm text-gray-400 whitespace-nowrap">{unit}</span>}
+    </div>
+  )
+}
+
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
+  const total = payload.reduce((s, p) => s + (p.value || 0), 0)
   return (
-    <div className="rounded-xl bg-white shadow-lg border border-gray-100 px-4 py-3 text-sm">
-      <p className="font-semibold text-gray-700 mb-1">{label}歳</p>
-      {payload.map((p) => (
-        <p key={p.dataKey} style={{ color: p.color }} className="font-medium">
-          {p.name}: {formatYen(p.value)}
-        </p>
-      ))}
+    <div className="rounded-xl bg-white shadow-lg border border-gray-100 px-4 py-3 text-sm min-w-52">
+      <p className="font-semibold text-gray-700 mb-2">{label}歳</p>
+      {payload.map((p) =>
+        p.value > 0 ? (
+          <p key={p.dataKey} style={{ color: p.fill }} className="font-medium">
+            {p.name}: {formatYen(p.value)}
+          </p>
+        ) : null
+      )}
+      <p className="font-semibold text-gray-700 mt-1.5 pt-1.5 border-t border-gray-100">
+        合計: {formatYen(total)}
+      </p>
     </div>
   )
 }
@@ -83,50 +91,65 @@ export default function App() {
     { id: 3, fromAge: 40, toAge: 65, monthlyAmount: 80_000 },
   ])
 
-  const addBracket = () => {
+  const addBracket = () =>
     setBrackets((prev) => [
       ...prev,
       { id: nextId.current++, fromAge: currentAge, toAge: targetAge, monthlyAmount: 30_000 },
     ])
-  }
-
   const removeBracket = (id) => setBrackets((prev) => prev.filter((b) => b.id !== id))
-
   const updateBracket = (id, field, value) =>
     setBrackets((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)))
 
   const data = useMemo(() => {
     if (targetAge <= currentAge) return []
     const monthlyRate = rate / 100 / 12
-    let assets = currentAssets
-    let totalInvested = currentAssets
-    const rows = [
-      { age: currentAge, 累計投資額: Math.round(totalInvested), 運用益: 0, 合計: Math.round(assets) },
-    ]
+
+    let nisaInvested = Math.min(currentAssets, NISA_LIMIT)
+    let taxableInvested = Math.max(0, currentAssets - NISA_LIMIT)
+    let nisaAssets = nisaInvested
+    let taxableAssets = taxableInvested
+
+    const makeRow = (age) => ({
+      age,
+      NISA投資額: Math.round(nisaInvested),
+      NISA運用益: Math.round(Math.max(0, nisaAssets - nisaInvested)),
+      特定口座投資額: Math.round(taxableInvested),
+      特定口座運用益: Math.round(Math.max(0, taxableAssets - taxableInvested)),
+    })
+
+    const rows = [makeRow(currentAge)]
 
     for (let age = currentAge; age < targetAge; age++) {
       const bracket = brackets.find((b) => age >= b.fromAge && age <= b.toAge)
       const monthly = bracket ? bracket.monthlyAmount : 0
+
       for (let m = 0; m < 12; m++) {
-        assets = assets * (1 + monthlyRate) + monthly
-        totalInvested += monthly
+        nisaAssets *= 1 + monthlyRate
+        taxableAssets *= 1 + monthlyRate
+
+        const nisaRoom = Math.max(0, NISA_LIMIT - nisaInvested)
+        const nisaContrib = Math.min(monthly, nisaRoom)
+        const taxableContrib = monthly - nisaContrib
+
+        nisaAssets += nisaContrib
+        nisaInvested += nisaContrib
+        taxableAssets += taxableContrib
+        taxableInvested += taxableContrib
       }
-      const gains = assets - totalInvested
-      rows.push({
-        age: age + 1,
-        累計投資額: Math.round(totalInvested),
-        運用益: Math.round(Math.max(0, gains)),
-        合計: Math.round(assets),
-      })
+
+      rows.push(makeRow(age + 1))
     }
+
     return rows
   }, [currentAge, currentAssets, rate, targetAge, brackets])
 
   const last = data[data.length - 1]
-  const finalAmount = last?.合計 ?? 0
-  const totalInvested = last?.累計投資額 ?? 0
-  const totalGains = Math.max(0, finalAmount - totalInvested)
-  const gainsRatio = totalInvested > 0 ? ((totalGains / totalInvested) * 100).toFixed(1) : '0.0'
+  const nisaFinal = (last?.NISA投資額 ?? 0) + (last?.NISA運用益 ?? 0)
+  const taxableFinal = (last?.特定口座投資額 ?? 0) + (last?.特定口座運用益 ?? 0)
+  const totalFinal = nisaFinal + taxableFinal
+  const totalInvested = (last?.NISA投資額 ?? 0) + (last?.特定口座投資額 ?? 0)
+  const nisaUsed = last?.NISA投資額 ?? 0
+  const nisaFillPct = Math.min(100, (nisaUsed / NISA_LIMIT) * 100).toFixed(0)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
@@ -153,7 +176,7 @@ export default function App() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-base font-semibold text-gray-700">年齢別 毎月の積立額</h2>
-              <p className="text-xs text-gray-400 mt-0.5">年齢が重複する場合は上のルールが優先されます</p>
+              <p className="text-xs text-gray-400 mt-0.5">NISAを優先して埋め、1800万円超過分は特定口座へ</p>
             </div>
             <button
               onClick={addBracket}
@@ -167,7 +190,6 @@ export default function App() {
             <p className="text-sm text-gray-400 text-center py-6">「+ 追加」で積立期間を設定してください</p>
           ) : (
             <div className="space-y-2">
-              {/* ヘッダー */}
               <div className="grid grid-cols-[1fr_auto_1fr_auto_2fr_auto_auto] items-center gap-2 px-1">
                 <span className="text-xs text-gray-400 text-center">開始年齢</span>
                 <span />
@@ -177,121 +199,100 @@ export default function App() {
                 <span />
                 <span />
               </div>
-
               {brackets.map((b) => (
                 <div
                   key={b.id}
                   className="grid grid-cols-[1fr_auto_1fr_auto_2fr_auto_auto] items-center gap-2 bg-gray-50 rounded-xl px-3 py-2"
                 >
-                  <SmallInput
-                    value={b.fromAge}
-                    onChange={(v) => updateBracket(b.id, 'fromAge', v)}
-                    min={10}
-                    max={100}
-                    step={1}
-                    align="center"
-                  />
+                  <SmallInput value={b.fromAge} onChange={(v) => updateBracket(b.id, 'fromAge', v)} min={10} max={100} step={1} align="center" />
                   <span className="text-gray-400 text-sm">〜</span>
-                  <SmallInput
-                    value={b.toAge}
-                    onChange={(v) => updateBracket(b.id, 'toAge', v)}
-                    min={10}
-                    max={100}
-                    step={1}
-                    align="center"
-                    unit="歳"
-                  />
+                  <SmallInput value={b.toAge} onChange={(v) => updateBracket(b.id, 'toAge', v)} min={10} max={100} step={1} align="center" unit="歳" />
                   <span className="text-gray-300 text-sm">|</span>
-                  <SmallInput
-                    value={b.monthlyAmount}
-                    onChange={(v) => updateBracket(b.id, 'monthlyAmount', v)}
-                    min={0}
-                    step={1000}
-                    unit="円/月"
-                  />
+                  <SmallInput value={b.monthlyAmount} onChange={(v) => updateBracket(b.id, 'monthlyAmount', v)} min={0} step={1000} unit="円/月" />
                   <span />
-                  <button
-                    onClick={() => removeBracket(b.id)}
-                    className="text-gray-300 hover:text-red-400 transition text-xl leading-none w-6 h-6 flex items-center justify-center"
-                  >
-                    ×
-                  </button>
+                  <button onClick={() => removeBracket(b.id)} className="text-gray-300 hover:text-red-400 transition text-xl leading-none w-6 h-6 flex items-center justify-center">×</button>
                 </div>
               ))}
             </div>
           )}
+
+          {/* NISA枠ステータス */}
+          <div className="mt-5 pt-4 border-t border-gray-100">
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-xs font-medium text-blue-600">新NISA枠 使用状況（{targetAge}歳時点）</span>
+              <span className="text-xs font-semibold text-blue-700">{formatYenShort(nisaUsed)} / 1800万円</span>
+            </div>
+            <div className="w-full bg-blue-100 rounded-full h-2">
+              <div
+                className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                style={{ width: `${nisaFillPct}%` }}
+              />
+            </div>
+            <p className="text-right text-xs text-blue-400 mt-1">{nisaFillPct}% 使用</p>
+          </div>
         </div>
 
         {/* サマリー */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
-            <p className="text-xs text-gray-400 mb-1">累計投資額</p>
-            <p className="text-xl font-bold text-gray-700">{formatYenShort(totalInvested)}</p>
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+              <p className="text-xs text-gray-400">NISA最終資産</p>
+            </div>
+            <p className="text-xl font-bold text-blue-600">{formatYenShort(nisaFinal)}</p>
           </div>
-          <div className="bg-blue-500 rounded-2xl shadow-sm p-5 text-center">
-            <p className="text-xs text-blue-100 mb-1">最終資産（{targetAge}歳）</p>
-            <p className="text-xl font-bold text-white">{formatYenShort(finalAmount)}</p>
+          <div className="bg-indigo-500 rounded-2xl shadow-sm p-5 text-center">
+            <p className="text-xs text-indigo-100 mb-1">合計最終資産（{targetAge}歳）</p>
+            <p className="text-xl font-bold text-white">{formatYenShort(totalFinal)}</p>
+            <p className="text-xs text-indigo-200 mt-0.5">投資元本 {formatYenShort(totalInvested)}</p>
           </div>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 text-center">
-            <p className="text-xs text-gray-400 mb-1">運用益</p>
-            <p className="text-xl font-bold text-emerald-600">+{formatYenShort(totalGains)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{gainsRatio}% 増</p>
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+              <p className="text-xs text-gray-400">特定口座最終資産</p>
+            </div>
+            <p className="text-xl font-bold text-amber-500">{formatYenShort(taxableFinal)}</p>
           </div>
         </div>
 
         {/* グラフ */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-base font-semibold text-gray-700 mb-5">年齢別 資産推移</h2>
-          <ResponsiveContainer width="100%" height={320}>
-            <AreaChart data={data} margin={{ top: 4, right: 4, left: 8, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gradInvested" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.18} />
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0.02} />
-                </linearGradient>
-                <linearGradient id="gradGains" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0.03} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-gray-700">年齢別 資産推移</h2>
+            <div className="flex gap-3 text-xs text-gray-500">
+              <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-500" />NISA（非課税）</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-400" />特定口座（課税）</span>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={340}>
+            <BarChart data={data} margin={{ top: 4, right: 4, left: 8, bottom: 0 }} barCategoryGap="20%">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
               <XAxis
                 dataKey="age"
                 tickFormatter={(v) => `${v}歳`}
-                tick={{ fontSize: 11, fill: '#94a3b8' }}
+                tick={{ fontSize: 10, fill: '#94a3b8' }}
                 axisLine={false}
                 tickLine={false}
+                interval="preserveStartEnd"
               />
               <YAxis
                 tickFormatter={formatYenShort}
-                tick={{ fontSize: 11, fill: '#94a3b8' }}
+                tick={{ fontSize: 10, fill: '#94a3b8' }}
                 axisLine={false}
                 tickLine={false}
                 width={72}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
               <Legend
-                wrapperStyle={{ fontSize: '12px', paddingTop: '12px' }}
-                iconType="circle"
-                iconSize={8}
+                wrapperStyle={{ fontSize: '11px', paddingTop: '12px' }}
+                iconType="square"
+                iconSize={10}
               />
-              <Area
-                type="monotone"
-                dataKey="累計投資額"
-                stackId="1"
-                stroke="#6366f1"
-                strokeWidth={2}
-                fill="url(#gradInvested)"
-              />
-              <Area
-                type="monotone"
-                dataKey="運用益"
-                stackId="1"
-                stroke="#10b981"
-                strokeWidth={2}
-                fill="url(#gradGains)"
-              />
-            </AreaChart>
+              <Bar dataKey="NISA投資額" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="NISA運用益" stackId="a" fill="#93c5fd" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="特定口座投資額" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="特定口座運用益" stackId="a" fill="#fcd34d" radius={[4, 4, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
 
