@@ -112,9 +112,9 @@ function DataTable({ rows, columns, label }) {
 }
 
 const DEFAULT_BRACKETS = [
-  { id: 1, fromAge: 19, toAge: 23, monthlyAmount: 100_000 },
-  { id: 2, fromAge: 24, toAge: 27, monthlyAmount: 200_000 },
-  { id: 3, fromAge: 28, toAge: 45, monthlyAmount: 300_000 },
+  { id: 1, fromAge: 25, toAge: 29, monthlyAmount: 30_000 },
+  { id: 2, fromAge: 30, toAge: 39, monthlyAmount: 50_000 },
+  { id: 3, fromAge: 40, toAge: 49, monthlyAmount: 80_000 },
 ]
 
 export default function App() {
@@ -122,9 +122,9 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') } catch { return {} }
   })
 
-  const [currentAge, setCurrentAge] = useState(saved.currentAge ?? 19)
-  const [currentAssets, setCurrentAssets] = useState(saved.currentAssets ?? 1_500_000)
-  const [nominalRate, setNominalRate] = useState(saved.nominalRate ?? 9)
+  const [currentAge, setCurrentAge] = useState(saved.currentAge ?? 25)
+  const [currentAssets, setCurrentAssets] = useState(saved.currentAssets ?? 1_000_000)
+  const [nominalRate, setNominalRate] = useState(saved.nominalRate ?? 5)
   const [inflationRate, setInflationRate] = useState(saved.inflationRate ?? 2)
   const [targetAge, setTargetAge] = useState(saved.targetAge ?? 100)
   const [brackets, setBrackets] = useState(saved.brackets ?? DEFAULT_BRACKETS)
